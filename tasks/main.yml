@@ -28,6 +28,17 @@
 # Configure Jenkins init settings.
 - include: settings.yml
 
+- name: Test if jenkins alive
+  shell: "curl -D - --silent --max-time 5 http://{{ jenkins_hostname }}:{{ jenkins_http_port }}{{ jenkins_url_prefix }}/cli/"
+  register: test_result
+  changed_when: false
+  check_mode: no
+  ignore_errors: True
+
+- name: Restart Jenkins if failed to access to workaround systemd bug that service started by java process gone
+  service: name=jenkins state=restarted
+  when: test_result.stdout.find("200 OK") != -1
+
 # Make sure Jenkins starts, then configure Jenkins.
 - name: Ensure Jenkins is started and runs on startup.
   service: name=jenkins state=started enabled=yes
@@ -59,3 +70,4 @@
 
 # Update Jenkins and install configured plugins.
 - include: plugins.yml
+  when: geerlingguy_jenkins_install_plugins

@@ -35,3 +35,4 @@ jenkins_init_changes:
     value: "{{ jenkins_java_options }}"
 
 reinstall: no
+geerlingguy_jenkins_install_plugins: yes
