@@ -24,9 +24,40 @@
     jenkins_admin_token: "{{ admintokenfile['stdout'] | default(jenkins_admin_token) }}"
   no_log: True
 
+- name: backup plugins dir
+  become_user: "{{ jenkins_process_user }}"
+  shell: mkdir -p {{ jenkins_home }}/plugins.bak && cp -r {{ jenkins_home }}/plugins/* {{ jenkins_home }}/plugins.bak
+  ignore_errors: True
+  changed_when: False
+
+- name: list all the plugins on server
+  shell: cd {{ jenkins_home }}/plugins && ls -1 *.?pi | cut -d '.' -f 1
+  register: list_plugins_result
+  changed_when: False
+
+- name: remove plugins not enrolled
+  file:
+    path: "{{ jenkins_home }}/plugins/{{ item }}"
+    state: absent
+  register: plugins_removed
+  when: item not in jenkins_plugins_dict
+  with_items: "{{ list_plugins_result.stdout_lines }}"
+
+### assume plugins enabled when dir exists
+- name: remove plugins dir not enrolled
+  file:
+    path: "{{ jenkins_home }}/plugins/{{ item.split('.')[0] }}"
+    state: absent
+  register: plugins_dir_removed
+  notify: restart jenkins
+  when: item not in jenkins_plugins_dict
+  with_items: "{{ list_plugins_result.stdout_lines }}"
+
+### version is required
 - name: Install Jenkins plugins using password.
   jenkins_plugin:
-    name: "{{ item }}"
+    name: "{{ item.key }}"
+    version: "{{ item.value['version'] }}"
     jenkins_home: "{{ jenkins_home }}"
     params:
       url_username: "{{ jenkins_admin_username }}"
@@ -34,17 +65,63 @@
     timeout: "{{ jenkins_plugin_timeout }}"
     updates_expiration: "{{ jenkins_plugin_updates_expiration }}"
     url: "http://{{ jenkins_hostname }}:{{ jenkins_http_port }}{{ jenkins_url_prefix }}"
-  with_items: "{{ jenkins_plugins }}"
+  with_dict: "{{ jenkins_plugins_dict }}"
   when: jenkins_admin_password != ""
   notify: restart jenkins
 
 - name: Install Jenkins plugins using token.
   jenkins_plugin:
-    name: "{{ item }}"
+    name: "{{ item.key }}"
+    version: "{{ item.value['version'] }}"
     params:
       url_token: "{{ jenkins_admin_token }}"
     updates_expiration: "{{ jenkins_plugin_updates_expiration }}"
     url: "http://{{ jenkins_hostname }}:{{ jenkins_http_port }}{{ jenkins_url_prefix }}"
-  with_items: "{{ jenkins_plugins }}"
+  with_dict: "{{ jenkins_plugins_dict }}"
   when: jenkins_admin_token != ""
   notify: restart jenkins
+
+- meta: flush_handlers
+
+###
+#  all plugins and their deps should be listed here with version.
+#  a script to dump jenkins plugins versions in groovy console
+#      for (plugin in Jenkins.instance.pluginManager.plugins)
+#      {
+#        println("""\
+#          # ${plugin.displayName}
+#          ${plugin.shortName}:
+#            version: "${plugin.version}"
+#            enabled: ${plugin.active?"yes":"no"}
+#          """.stripIndent())
+#      }
+###
+
+- include: start_wait.yml
+
+- name: Enable Jenkins plugins using password.
+  jenkins_plugin:
+    name: "{{ item.key }}"
+    state: "{{ (item.value['enabled'] | default('yes') == 'no') | ternary('disabled','enabled') }}"
+    jenkins_home: "{{ jenkins_home }}"
+    params:
+      url_username: "{{ jenkins_admin_username }}"
+      url_password: "{{ jenkins_admin_password }}"
+    timeout: "{{ jenkins_plugin_timeout }}"
+    updates_expiration: "{{ jenkins_plugin_updates_expiration }}"
+    url: "http://{{ jenkins_hostname }}:{{ jenkins_http_port }}{{ jenkins_url_prefix }}"
+  with_dict: "{{ jenkins_plugins_dict }}"
+  when: jenkins_admin_password != ""
+
+- name: Enable Jenkins plugins using token.
+  jenkins_plugin:
+    name: "{{ item.key }}"
+    state: "{{ (item.value['enabled'] | default('yes') == 'no') | ternary('disabled','enabled') }}"
+    params:
+      url_token: "{{ jenkins_admin_token }}"
+    updates_expiration: "{{ jenkins_plugin_updates_expiration }}"
+    url: "http://{{ jenkins_hostname }}:{{ jenkins_http_port }}{{ jenkins_url_prefix }}"
+  with_dict: "{{ jenkins_plugins_dict }}"
+  when: jenkins_admin_token != ""
+
+
