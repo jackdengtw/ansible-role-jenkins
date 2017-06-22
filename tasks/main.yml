@@ -37,7 +37,7 @@
 
 - name: Restart Jenkins if failed to access to workaround systemd bug that service started by java process gone
   service: name=jenkins state=restarted
-  when: test_result.stdout.find("200 OK") == -1
+  when: (test_result.stdout.find("200 OK") == -1) and (test_result.stdout.find("403 Forbidden") == -1)
 
 # Make sure Jenkins starts, then configure Jenkins.
 - name: Ensure Jenkins is started and runs on startup.

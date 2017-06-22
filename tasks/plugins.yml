@@ -25,6 +25,7 @@
   no_log: True
 
 - name: backup plugins dir
+  become: yes
   become_user: "{{ jenkins_process_user }}"
   shell: mkdir -p {{ jenkins_home }}/plugins.bak && cp -r {{ jenkins_home }}/plugins/* {{ jenkins_home }}/plugins.bak
   ignore_errors: True
@@ -37,7 +38,7 @@
 
 - name: remove plugins not enrolled
   file:
-    path: "{{ jenkins_home }}/plugins/{{ item }}"
+    path: "{{ jenkins_home }}/plugins/{{ item }}.jpi"
     state: absent
   register: plugins_removed
   when: item not in jenkins_plugins_dict
@@ -46,7 +47,7 @@
 ### assume plugins enabled when dir exists
 - name: remove plugins dir not enrolled
   file:
-    path: "{{ jenkins_home }}/plugins/{{ item.split('.')[0] }}"
+    path: "{{ jenkins_home }}/plugins/{{ item }}"
     state: absent
   register: plugins_dir_removed
   notify: restart jenkins
